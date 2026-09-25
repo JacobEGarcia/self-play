@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SELF-PLAY TERMINAL</title>
+<meta name="description" content="Two tabular Q-learning agents teach themselves Pong through self-play, live in your browser. No weights, no server.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%230b0a08'/%3E%3Crect x='3' y='3' width='10' height='10' fill='%23ffb000'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0b0a08; --panel:#100e0a; --ink:#e8e4da; --faint:#9a917e;
+  --amber:#ffb000; --amber-hi:#ffd257; --line:rgba(255,176,0,.30); --line-dim:rgba(255,176,0,.14);
+  --red:#ff5030;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--ink);font-family:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;font-size:14px;line-height:1.45}
+.wrap{max-width:1140px;margin:0 auto;padding:22px 20px 40px}
+header.top{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:18px}
+h1{font-size:26px;font-weight:600;letter-spacing:.14em;color:var(--amber)}
+h1 .thin{color:var(--ink);font-weight:400}
+.sub{margin-top:4px;font-size:11px;letter-spacing:.22em;color:var(--faint)}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);padding:5px 10px;font-size:10px;letter-spacing:.14em;color:var(--amber)}
+.chip b{color:var(--ink);font-weight:400}
+.grid{display:grid;grid-template-columns:684px 1fr;gap:18px}
+@media(max-width:1100px){.grid{grid-template-columns:1fr}}
+.panel{border:1px solid var(--line);background:var(--panel)}
+.panel .bar{display:flex;justify-content:space-between;align-items:center;gap:10px;border-bottom:1px solid var(--line-dim);padding:7px 12px;font-size:10px;letter-spacing:.18em;color:var(--amber)}
+.panel .bar .right{color:var(--faint)}
+canvas{display:block}
+#match{width:100%;height:auto;background:var(--bg)}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line-dim);border:1px solid var(--line);margin-bottom:18px}
+.stat{background:var(--panel);padding:10px 12px}
+.stat .k{font-size:9px;letter-spacing:.18em;color:var(--faint)}
+.stat .v{font-size:22px;font-weight:600;color:var(--amber);margin-top:2px;font-variant-numeric:tabular-nums}
+.stat .v small{font-size:11px;color:var(--faint);font-weight:400}
+#graph{width:100%;height:230px}
+.legend{display:flex;gap:18px;padding:8px 12px;font-size:10px;letter-spacing:.12em;color:var(--faint);border-top:1px solid var(--line-dim)}
+.sw{display:inline-block;width:14px;height:2px;vertical-align:middle;margin-right:6px}
+.controls{border:1px solid var(--line);background:var(--panel);padding:12px}
+.controls .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.controls .row + .row{margin-top:10px}
+.lbl{font-size:9px;letter-spacing:.18em;color:var(--faint);margin-right:4px}
+button{font:inherit;font-size:11px;letter-spacing:.12em;background:transparent;color:var(--amber);border:1px solid var(--line);padding:7px 12px;cursor:pointer}
+button:hover{background:rgba(255,176,0,.10)}
+button.active{background:var(--amber);color:#0b0a08;font-weight:600}
+button.danger{color:var(--red);border-color:rgba(255,80,48,.4)}
+button.danger:hover{background:rgba(255,80,48,.10)}
+.hint{margin-top:10px;font-size:10px;letter-spacing:.10em;color:var(--faint)}
+.save{margin-top:8px;font-size:10px;letter-spacing:.10em;color:var(--faint)}
+footer{margin-top:22px;border-top:1px solid var(--line);padding-top:18px;display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+@media(max-width:900px){footer{grid-template-columns:1fr}}
+footer h2{font-size:10px;letter-spacing:.22em;color:var(--amber);margin-bottom:8px;font-weight:600}
+footer p{font-size:12px;color:var(--faint)}
+footer p b{color:var(--ink);font-weight:400}
+.mode-flash{color:var(--amber-hi)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>SELF-PLAY <span class="thin">TERMINAL</span></h1>
+      <div class="sub">TABULAR REINFORCEMENT UNIT // ADVERSARIAL SELF-PLAY, LIVE</div>
+    </div>
+    <div class="chips">
+      <span class="chip">UPLINK <b>LOCAL</b></span>
+      <span class="chip">WEIGHTS <b>NONE</b></span>
+      <span class="chip">COST <b>$0.00</b></span>
+    </div>
+  </header>
+
+  <div class="grid">
+    <div>
+      <div class="panel">
+        <div class="bar"><span>OBSERVATION DECK</span><span class="right" id="modeLabel">EXHIBITION: CHAMPION vs DRONE-07</span></div>
+        <canvas id="match" width="640" height="400"></canvas>
+        <div class="legend">
+          <span><span class="sw" style="background:var(--amber)"></span>CHAMPION (LEFT)</span>
+          <span><span class="sw" style="background:var(--ink)"></span><span id="oppLegend">DRONE-07 (RIGHT)</span></span>
+          <span style="margin-left:auto" id="setLabel">FIRST TO 7</span>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="stats">
+        <div class="stat"><div class="k">EPISODES</div><div class="v" id="stEp">0</div></div>
+        <div class="stat"><div class="k">WIN% vs DRONE-07</div><div class="v" id="stWin">-<small>%</small></div></div>
+        <div class="stat"><div class="k">CANDIDATE WIN%</div><div class="v" id="stBest">-<small>%</small></div></div>
+        <div class="stat"><div class="k">AVG RALLY (200 EP)</div><div class="v" id="stRally">0.0</div></div>
+        <div class="stat"><div class="k">EXPLORATION (EPS)</div><div class="v" id="stEps">0.300</div></div>
+        <div class="stat"><div class="k">STATES LEARNED</div><div class="v" id="stStates">0<small>/540</small></div></div>
+      </div>
+
+      <div class="panel" style="margin-bottom:18px">
+        <div class="bar"><span>LEARNING CURVE</span><span class="right" id="graphEp">EP 0</span></div>
+        <canvas id="graph"></canvas>
+        <div class="legend">
+          <span><span class="sw" style="background:var(--amber)"></span>WIN% vs DRONE-07</span>
+          <span><span class="sw" style="background:var(--ink)"></span>AVG RALLY LENGTH</span>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="row">
+          <span class="lbl">TRAINING SPEED</span>
+          <button data-speed="hold">HOLD</button>
+          <button data-speed="1">1x</button>
+          <button data-speed="25">25x</button>
+          <button data-speed="max" class="active">MAX</button>
+        </div>
+        <div class="row">
+          <button id="btnChallenge">CHALLENGE THE CHAMPION</button>
+          <button id="btnReset" class="danger">RESET TRAINING</button>
+        </div>
+        <div class="hint">CHALLENGE: W/S OR ARROW KEYS - FIRST TO 5 - ESC TO LEAVE</div>
+        <div class="save" id="saveLine">AUTOSAVE: LOCAL - NO ARCHIVE YET</div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <div>
+      <h2>WHAT YOU ARE WATCHING</h2>
+      <p>Two tabular Q-learning agents play each other at high speed in the background, with sparring rounds against a scripted drone every third game. Up front, the current champion defends the left court against that drone in real time. At first it loses nearly every point. Give it a minute.</p>
+    </div>
+    <div>
+      <h2>HOW IT LEARNS</h2>
+      <p>The court is discretized into <b>900 states</b>: ball position, heading, and paddle offset. Three actions: up, hold, down. Reward is +1 for a point, -1 for a concession, +0.2 per return, plus a small shaping reward for closing on the ball. The champion is a checkpoint: a challenger must beat it in a seeded 41-game evaluation to take the crown, so the amber win line cannot go down. No neural network, no weights, no server. The whole brain is a table of 2,700 numbers, updated and saved in your browser.</p>
+    </div>
+    <div>
+      <h2>WHY SELF-PLAY</h2>
+      <p>This is the loop from the Stanford RL lecture: skill bootstrapped by playing against yourself, with zero human examples. AlphaGo reported the same result at scale - the self-play version beat the one trained on human games. The amber line is the champion's win rate against the drone. Watch it climb.</p>
+    </div>
+  </footer>
+</div>
+
+<script>
+'use strict';
+(function(){
+var FW=640,FH=400,PADDLE_W=8,PADDLE_H=64,PL_X=26,PR_X=FW-26-PADDLE_W;
+var P_SPEED=340,D_SPEED=220,DRONE_LEAD=0.7,DRONE_ERR=32,BALL_R=5,V0=280,VUP=1.045,VMAX=880;
+var DT=1/120,TICK_CAP=3600,HIT_R=0.2,WIN_R=2.0,GAMMA=0.995,ALPHA=0.15;
+var ACT_REPEAT=3,SHAPE=0.2;
+var EPS0=0.30,EPS_DECAY=0.9995,EPS_MIN=0.03;
+var BX=5,BY=6,BDY=5,NSTATE=BX*BY*2*3*BDY,NACT=3;
+var EVAL_EVERY=100,EVAL_N=41,LS_KEY='selfplay-terminal-v1';
+
+function clamp(v,a,b){return v<a?a:(v>b?b:v);}
+var rng=Math.random;
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function makeQ(){return new Float32Array(NSTATE*NACT);}
+
+function observe(ball,py,side){
+  var bx=side===0?ball.x:FW-ball.x;
+  var vx=side===0?ball.vx:-ball.vx;
+  var bxi=clamp(Math.floor(bx/FW*BX),0,BX-1);
+  var byi=clamp(Math.floor(ball.y/FH*BY),0,BY-1);
+  var toward=vx<0?1:0;
+  var vyi=ball.vy<-40?0:(ball.vy>40?2:1);
+  var d=ball.y-py;
+  var dyi=d<-40?0:(d<-10?1:(d<=10?2:(d<=40?3:4)));
+  return (((bxi*BY+byi)*2+toward)*3+vyi)*BDY+dyi;
+}
+function act(q,s,eps){
+  if(rng()<eps)return (rng()*3)|0;
+  var o=s*3,best=0;
+  if(q[o+1]>q[o+best])best=1;
+  if(q[o+2]>q[o+best])best=2;
+  return best;
+}
+function learn(q,s,a,r,s2,done){
+  var o=s*3,o2=s2*3,m=q[o2];
+  if(q[o2+1]>m)m=q[o2+1];
+  if(q[o2+2]>m)m=q[o2+2];
+  q[o+a]+=ALPHA*(r+(done?0:GAMMA*m)-q[o+a]);
+}
+function learnedStates(q){
+  var n=0,s,o;
+  for(s=0;s<NSTATE;s++){o=s*3;if(q[o]!==0||q[o+1]!==0||q[o+2]!==0)n++;}
+  return n;
+}
+
+function newSim(){return {ball:{x:FW/2,y:FH/2,vx:0,vy:0},pL:FH/2,pR:FH/2,tick:0,hits:0,crossed:false,droneErr:0};}
+function serve(sim){
+  var b=sim.ball;b.x=FW/2;b.y=FH/2;
+  var dir=rng()<0.5?-1:1;
+  var ang=rng()*1.0-0.5;
+  b.vx=Math.cos(ang)*V0*dir;b.vy=Math.sin(ang)*V0;
+  sim.pL=FH/2;sim.pR=FH/2;sim.tick=0;sim.hits=0;sim.crossed=false;sim.droneErr=0;
+}
+function stepSim(sim,vL,vR,h){
+  sim.pL=clamp(sim.pL+vL*h,PADDLE_H/2,FH-PADDLE_H/2);
+  sim.pR=clamp(sim.pR+vR*h,PADDLE_H/2,FH-PADDLE_H/2);
+  var b=sim.ball;
+  b.x+=b.vx*h;b.y+=b.vy*h;
+  if(b.y<BALL_R){b.y=BALL_R;b.vy=Math.abs(b.vy);}
+  if(b.y>FH-BALL_R){b.y=FH-BALL_R;b.vy=-Math.abs(b.vy);}
+  var hitL=false,hitR=false,point=null,off,sp,a;
+  if(b.vx<0&&b.x-BALL_R<=PL_X+PADDLE_W&&b.x-BALL_R>=PL_X-8){
+    off=(b.y-sim.pL)/(PADDLE_H/2);
+    if(Math.abs(off)<=1.15){
+      sp=Math.min(Math.hypot(b.vx,b.vy)*VUP,VMAX);
+      a=clamp(off,-1,1)*0.6+clamp(vL/P_SPEED,-1,1)*0.5;
+      a=clamp(a,-1.2,1.2);
+      b.vx=Math.cos(a)*sp;b.vy=Math.sin(a)*sp;b.x=PL_X+PADDLE_W+BALL_R;
+      hitL=true;sim.hits++;
+    }
+  }
+  if(b.vx>0&&b.x+BALL_R>=PR_X&&b.x+BALL_R<=PR_X+PADDLE_W+8){
+    off=(b.y-sim.pR)/(PADDLE_H/2);
+    if(Math.abs(off)<=1.15){
+      sp=Math.min(Math.hypot(b.vx,b.vy)*VUP,VMAX);
+      a=clamp(off,-1,1)*0.6+clamp(vR/P_SPEED,-1,1)*0.5;
+      a=clamp(a,-1.2,1.2);
+      b.vx=-Math.cos(a)*sp;b.vy=Math.sin(a)*sp;b.x=PR_X-BALL_R;
+      hitR=true;sim.hits++;
+    }
+  }
+  if(b.x<-20)point='R';
+  else if(b.x>FW+20)point='L';
+  sim.tick++;
+  return {hitL:hitL,hitR:hitR,point:point};
+}
+function droneVel(sim){
+  var b=sim.ball;
+  if(b.vx>0&&!sim.crossed&&b.x>FW/2){sim.crossed=true;sim.droneErr=(rng()*2-1)*DRONE_ERR;}
+  if(b.vx<0&&sim.crossed&&b.x<FW/2)sim.crossed=false;
+  var target=FH/2;
+  if(b.vx>0){
+    var t=(PR_X-b.x)/Math.max(b.vx,1);
+    target=b.y+b.vy*t*DRONE_LEAD+sim.droneErr;
+  }
+  var d=target-sim.pR;
+  if(Math.abs(d)<5)return 0;
+  return (d>0?1:-1)*D_SPEED;
+}
+
+var qA=makeQ(),qB=makeQ(),epsA=EPS0,epsB=EPS0;
+var qE=null,eliteWin=-1;
+var episodes=0,bestWin=-1,lastWin=-1;
+var rallyBuf=[];
+var winHist=[],rallyHist=[];
+var speedMode='max';
+var archivedEp=0;
+
+function shapeDist(sim,side){
+  var b=sim.ball;
+  var toward=side===0?b.vx<0:b.vx>0;
+  if(!toward)return -1;
+  return Math.abs(b.y-(side===0?sim.pL:sim.pR));
+}
+function trainEpisode(){
+  var sim=newSim();serve(sim);
+  var useDrone=(episodes%3===2);
+  var sA=observe(sim.ball,sim.pL,0),sB=observe(sim.ball,sim.pR,1);
+  while(sim.tick<TICK_CAP){
+    var aA=act(qA,sA,epsA),aB=act(qB,sB,epsB);
+    var dAp=shapeDist(sim,0),dBp=useDrone?-1:shapeDist(sim,1);
+    var rA=0,rB=0,done=false;
+    for(var k=0;k<ACT_REPEAT;k++){
+      var vR=useDrone?droneVel(sim):(aB-1)*P_SPEED;
+      var ev=stepSim(sim,(aA-1)*P_SPEED,vR,DT);
+      if(ev.hitL)rA+=HIT_R;
+      if(ev.hitR)rB+=HIT_R;
+      if(ev.point){
+        done=true;
+        if(ev.point==='L'){rA+=WIN_R;rB-=WIN_R;}
+        else{rA-=WIN_R;rB+=WIN_R;}
+        break;
+      }
+    }
+    var dAn=shapeDist(sim,0),dBn=useDrone?-1:shapeDist(sim,1);
+    if(dAp>=0&&dAn>=0)rA+=SHAPE*(dAp-dAn)/PADDLE_H;
+    if(dBp>=0&&dBn>=0)rB+=SHAPE*(dBp-dBn)/PADDLE_H;
+    var sA2=observe(sim.ball,sim.pL,0),sB2=observe(sim.ball,sim.pR,1);
+    learn(qA,sA,aA,rA,sA2,done);
+    if(!useDrone)learn(qB,sB,aB,rB,sB2,done);
+    sA=sA2;sB=sB2;
+    if(done)break;
+  }
+  episodes++;
+  epsA=Math.max(EPS_MIN,epsA*EPS_DECAY);
+  epsB=Math.max(EPS_MIN,epsB*EPS_DECAY);
+  rallyBuf.push(sim.hits);
+  if(rallyBuf.length>200)rallyBuf.shift();
+  if(episodes%EVAL_EVERY===0)runEval();
+}
+function rallyAvg(){
+  if(!rallyBuf.length)return 0;
+  var s=0,i;for(i=0;i<rallyBuf.length;i++)s+=rallyBuf[i];
+  return s/rallyBuf.length;
+}
+function evalPolicy(q){
+  rng=mulberry32(1337);
+  var wins=0,i;
+  for(i=0;i<EVAL_N;i++){
+    var sim=newSim();serve(sim);
+    var s=observe(sim.ball,sim.pL,0);
+    while(sim.tick<TICK_CAP){
+      var a=act(q,s,0);
+      var ev=stepSim(sim,(a-1)*P_SPEED,droneVel(sim),DT);
+      if(ev.point){if(ev.point==='L')wins++;break;}
+      s=observe(sim.ball,sim.pL,0);
+    }
+  }
+  rng=Math.random;
+  return wins/EVAL_N;
+}
+function runEval(){
+  var cw=evalPolicy(qA);
+  lastWin=cw;
+  if(qE===null){qE=qA.slice();eliteWin=cw;}
+  else if(cw>=eliteWin+0.03){qE.set(qA);eliteWin=cw;}
+  if(eliteWin>bestWin)bestWin=eliteWin;
+  winHist.push({ep:episodes,v:eliteWin});
+  rallyHist.push({ep:episodes,v:rallyAvg()});
+  save();
+}
+function save(){
+  try{
+    localStorage.setItem(LS_KEY,JSON.stringify({
+      a:qToB64(qA),b:qToB64(qB),e:qE?qToB64(qE):null,ew:eliteWin,ea:epsA,eb:epsB,ep:episodes,bw:bestWin
+    }));
+    archivedEp=episodes;
+  }catch(e){}
+}
+function load(){
+  try{
+    var raw=localStorage.getItem(LS_KEY);
+    if(!raw)return false;
+    var d=JSON.parse(raw);
+    var qa=b64ToQ(d.a),qb=b64ToQ(d.b);
+    if(qa.length!==NSTATE*NACT||qb.length!==NSTATE*NACT)return false;
+    qA=qa;qB=qb;epsA=d.ea;epsB=d.eb;episodes=d.ep;bestWin=d.bw;
+    if(d.e){var qe=b64ToQ(d.e);if(qe.length===NSTATE*NACT){qE=qe;eliteWin=d.ew;}}
+    archivedEp=episodes;
+    return true;
+  }catch(e){return false;}
+}
+function qToB64(q){
+  var u=new Uint8Array(q.buffer,q.byteOffset,q.byteLength),s='',i;
+  for(i=0;i<u.length;i+=8192)s+=String.fromCharCode.apply(null,u.subarray(i,i+8192));
+  return btoa(s);
+}
+function b64ToQ(b){
+  var s=atob(b),u=new Uint8Array(s.length),i;
+  for(i=0;i<s.length;i++)u[i]=s.charCodeAt(i);
+  return new Float32Array(u.buffer);
+}
+
+/* ---------- exhibition ---------- */
+var ex={sim:newSim(),scoreL:0,scoreR:0,freeze:0,banner:'',trail:[]};
+serve(ex.sim);
+var humanMode=false,frozenQ=null,humanInput=0;
+var SET_EX=7,SET_HU=5;
+
+function exSetPoint(p){
+  if(p==='L')ex.scoreL++;else ex.scoreR++;
+  var target=humanMode?SET_HU:SET_EX;
+  if(ex.scoreL>=target||ex.scoreR>=target){
+    if(humanMode){
+      ex.banner=ex.scoreL>=target?'CHAMPION TAKES THE SET '+ex.scoreL+'-'+ex.scoreR:'YOU TAKE THE SET '+ex.scoreR+'-'+ex.scoreL;
+    }else{
+      ex.banner=(ex.scoreL>=target?'CHAMPION':'DRONE-07')+' TAKES THE SET '+Math.max(ex.scoreL,ex.scoreR)+'-'+Math.min(ex.scoreL,ex.scoreR);
+    }
+    ex.freeze=2.6;
+    ex.scoreL=0;ex.scoreR=0;
+    if(humanMode)setTimeout(exitChallenge,2600);
+  }else{
+    ex.freeze=0.8;
+  }
+  serve(ex.sim);
+  ex.trail.length=0;
+}
+function exStep(dt){
+  if(ex.freeze>0){ex.freeze-=dt;return;}
+  var acc=dt;
+  while(acc>0){
+    var h=Math.min(acc,DT);acc-=h;
+    var sim=ex.sim;
+    var q=humanMode?frozenQ:(qE?qE:qA);
+    var s=observe(sim.ball,sim.pL,0);
+    var a=act(q,s,humanMode?0:0.02);
+    var vR=humanMode?humanInput*P_SPEED:droneVel(sim);
+    var ev=stepSim(sim,(a-1)*P_SPEED,vR,h);
+    if(ev.point){exSetPoint(ev.point);break;}
+  }
+  var b=ex.sim.ball;
+  ex.trail.push({x:b.x,y:b.y});
+  if(ex.trail.length>14)ex.trail.shift();
+}
+
+/* ---------- rendering ---------- */
+var mc=document.getElementById('match'),mctx=mc.getContext('2d');
+function drawMatch(){
+  var c=mctx;
+  c.fillStyle='#0b0a08';c.fillRect(0,0,FW,FH);
+  c.strokeStyle='rgba(255,176,0,.10)';c.lineWidth=1;
+  var i;
+  for(i=1;i<8;i++){c.beginPath();c.moveTo(i*FW/8,0);c.lineTo(i*FW/8,FH);c.stroke();}
+  c.strokeStyle='rgba(255,176,0,.35)';
+  c.setLineDash([6,8]);
+  c.beginPath();c.moveTo(FW/2,8);c.lineTo(FW/2,FH-8);c.stroke();
+  c.setLineDash([]);
+  c.strokeStyle='rgba(255,176,0,.45)';
+  c.strokeRect(4.5,4.5,FW-9,FH-9);
+  // trail
+  for(i=0;i<ex.trail.length;i++){
+    var t=ex.trail[i],al=(i+1)/ex.trail.length*0.35;
+    c.fillStyle='rgba(255,210,87,'+al.toFixed(3)+')';
+    c.fillRect(t.x-3,t.y-3,6,6);
+  }
+  // paddles
+  c.fillStyle='#ffb000';
+  c.fillRect(PL_X,ex.sim.pL-PADDLE_H/2,PADDLE_W,PADDLE_H);
+  c.fillStyle=humanMode?'#ffd257':'#e8e4da';
+  c.fillRect(PR_X,ex.sim.pR-PADDLE_H/2,PADDLE_W,PADDLE_H);
+  // ball
+  var b=ex.sim.ball;
+  c.fillStyle='#ffd257';
+  c.fillRect(b.x-BALL_R,b.y-BALL_R,BALL_R*2,BALL_R*2);
+  // scores
+  c.font='600 30px "IBM Plex Mono",ui-monospace,monospace';
+  c.textAlign='right';c.fillStyle='rgba(255,176,0,.85)';
+  c.fillText(String(ex.scoreL),FW/2-26,44);
+  c.textAlign='left';c.fillStyle='rgba(232,228,218,.75)';
+  c.fillText(String(ex.scoreR),FW/2+26,44);
+  // freeze banner
+  if(ex.freeze>0&&ex.banner){
+    c.fillStyle='rgba(11,10,8,.72)';
+    c.fillRect(0,FH/2-30,FW,60);
+    c.strokeStyle='rgba(255,176,0,.5)';
+    c.strokeRect(0.5,FH/2-29.5,FW-1,59);
+    c.font='600 16px "IBM Plex Mono",ui-monospace,monospace';
+    c.textAlign='center';c.fillStyle='#ffd257';
+    c.fillText(ex.banner,FW/2,FH/2+6);
+  }
+}
+
+var gc=document.getElementById('graph'),gctx=gc.getContext('2d');
+function sizeGraph(){
+  var r=gc.getBoundingClientRect();
+  var dpr=window.devicePixelRatio||1;
+  gc.width=Math.max(300,Math.floor(r.width*dpr));
+  gc.height=Math.floor(230*dpr);
+}
+function drawGraph(){
+  var c=gctx,W=gc.width,H=gc.height;
+  c.fillStyle='#0b0a08';c.fillRect(0,0,W,H);
+  var padL=34*(window.devicePixelRatio||1),padR=8,padT=10,padB=18;
+  var iw=W-padL-padR,ih=H-padT-padB;
+  var dpr=window.devicePixelRatio||1;
+  c.font='400 '+(9*dpr)+'px "IBM Plex Mono",ui-monospace,monospace';
+  var g;
+  for(g=0;g<=4;g++){
+    var y=padT+ih*(1-g/4);
+    c.strokeStyle='rgba(255,176,0,.12)';
+    c.beginPath();c.moveTo(padL,y);c.lineTo(W-padR,y);c.stroke();
+    c.fillStyle='rgba(154,145,126,.9)';c.textAlign='right';
+    c.fillText(String(g*25),padL-5*dpr,y+3*dpr);
+  }
+  if(winHist.length<2){
+    c.fillStyle='rgba(154,145,126,.9)';c.textAlign='center';
+    c.fillText('COLLECTING EPISODES...',padL+iw/2,padT+ih/2);
+    return;
+  }
+  var stride=Math.max(1,Math.floor(winHist.length/Math.max(iw,1)));
+  var ep0=winHist[0].ep,ep1=winHist[winHist.length-1].ep;
+  if(ep1<=ep0)ep1=ep0+1;
+  var maxRally=1,i;
+  for(i=0;i<rallyHist.length;i++)if(rallyHist[i].v>maxRally)maxRally=rallyHist[i].v;
+  maxRally=Math.max(maxRally,10);
+  function X(ep){return padL+iw*(ep-ep0)/(ep1-ep0);}
+  // rally (white, scaled to its own max, drawn faint)
+  c.strokeStyle='rgba(232,228,218,.45)';c.lineWidth=dpr;
+  c.beginPath();
+  for(i=0;i<rallyHist.length;i+=stride){
+    var x=X(rallyHist[i].ep),y=padT+ih*(1-rallyHist[i].v/maxRally);
+    if(i===0)c.moveTo(x,y);else c.lineTo(x,y);
+  }
+  c.stroke();
+  // win% (amber)
+  c.strokeStyle='#ffb000';c.lineWidth=1.6*dpr;
+  c.beginPath();
+  for(i=0;i<winHist.length;i+=stride){
+    var x2=X(winHist[i].ep),y2=padT+ih*(1-winHist[i].v);
+    if(i===0)c.moveTo(x2,y2);else c.lineTo(x2,y2);
+  }
+  c.stroke();
+  // last point marker
+  var lx=X(winHist[winHist.length-1].ep),ly=padT+ih*(1-winHist[winHist.length-1].v);
+  c.fillStyle='#ffd257';
+  c.fillRect(lx-2*dpr,ly-2*dpr,4*dpr,4*dpr);
+  // x labels
+  c.fillStyle='rgba(154,145,126,.9)';c.textAlign='left';
+  c.fillText(fmtEp(ep0),padL,H-4*dpr);
+  c.textAlign='right';
+  c.fillText(fmtEp(ep1)+' EP',W-padR,H-4*dpr);
+  // rally scale note
+  c.textAlign='left';
+  c.fillText('RALLY MAX '+maxRally.toFixed(0),padL,padT+8*dpr);
+}
+function fmtEp(n){
+  if(n>=1000000)return (n/1000000).toFixed(1)+'M';
+  if(n>=1000)return (n/1000).toFixed(1)+'K';
+  return String(n);
+}
+
+/* ---------- UI ---------- */
+var el={
+  ep:document.getElementById('stEp'),win:document.getElementById('stWin'),
+  best:document.getElementById('stBest'),rally:document.getElementById('stRally'),
+  eps:document.getElementById('stEps'),states:document.getElementById('stStates'),
+  mode:document.getElementById('modeLabel'),opp:document.getElementById('oppLegend'),
+  set:document.getElementById('setLabel'),save:document.getElementById('saveLine'),
+  gep:document.getElementById('graphEp'),
+  challenge:document.getElementById('btnChallenge'),reset:document.getElementById('btnReset')
+};
+function refreshStats(){
+  el.ep.textContent=episodes.toLocaleString('en-US');
+  el.win.innerHTML=(eliteWin<0?'-':Math.round(eliteWin*100))+'<small>%</small>';
+  el.best.innerHTML=(lastWin<0?'-':Math.round(lastWin*100))+'<small>%</small>';
+  el.rally.textContent=rallyAvg().toFixed(1);
+  el.eps.textContent=epsA.toFixed(3);
+  el.states.innerHTML=learnedStates(qA)+'<small>/'+NSTATE+'</small>';
+  el.gep.textContent='EP '+fmtEp(episodes);
+  el.save.textContent='AUTOSAVE: LOCAL - ARCHIVED '+archivedEp.toLocaleString('en-US')+' EP';
+}
+var speedBtns=document.querySelectorAll('button[data-speed]');
+function setSpeed(m){
+  speedMode=m;
+  for(var i=0;i<speedBtns.length;i++){
+    speedBtns[i].classList.toggle('active',speedBtns[i].getAttribute('data-speed')===m);
+  }
+}
+for(var i=0;i<speedBtns.length;i++){
+  (function(btn){btn.addEventListener('click',function(){setSpeed(btn.getAttribute('data-speed'));});})(speedBtns[i]);
+}
+function enterChallenge(){
+  if(humanMode)return;
+  humanMode=true;
+  frozenQ=(qE?qE:qA).slice();
+  ex.scoreL=0;ex.scoreR=0;ex.banner='';ex.freeze=0;
+  serve(ex.sim);ex.trail.length=0;
+  el.mode.textContent='HUMAN vs CHAMPION (FROZEN SNAPSHOT)';
+  el.mode.classList.add('mode-flash');
+  el.opp.textContent='YOU (RIGHT)';
+  el.set.textContent='FIRST TO 5';
+  el.challenge.textContent='EXIT CHALLENGE';
+}
+function exitChallenge(){
+  if(!humanMode)return;
+  humanMode=false;frozenQ=null;humanInput=0;
+  ex.scoreL=0;ex.scoreR=0;ex.banner='';ex.freeze=0;
+  serve(ex.sim);ex.trail.length=0;
+  el.mode.textContent='EXHIBITION: CHAMPION vs DRONE-07';
+  el.mode.classList.remove('mode-flash');
+  el.opp.textContent='DRONE-07 (RIGHT)';
+  el.set.textContent='FIRST TO 7';
+  el.challenge.textContent='CHALLENGE THE CHAMPION';
+}
+el.challenge.addEventListener('click',function(){
+  if(humanMode)exitChallenge();else enterChallenge();
+});
+el.reset.addEventListener('click',function(){
+  qA=makeQ();qB=makeQ();epsA=EPS0;epsB=EPS0;qE=null;eliteWin=-1;
+  episodes=0;bestWin=-1;lastWin=-1;rallyBuf.length=0;
+  winHist.length=0;rallyHist.length=0;archivedEp=0;
+  try{localStorage.removeItem(LS_KEY);}catch(e){}
+  exitChallenge();
+});
+var keyState={up:false,down:false};
+function key(e,down){
+  var k=e.key;
+  if(k==='ArrowUp'||k==='ArrowDown'||k===' '){e.preventDefault();}
+  if(k==='ArrowUp'||k==='w'||k==='W')keyState.up=down;
+  if(k==='ArrowDown'||k==='s'||k==='S')keyState.down=down;
+  if(down&&k==='Escape')exitChallenge();
+  humanInput=(keyState.up?-1:0)+(keyState.down?1:0);
+}
+window.addEventListener('keydown',function(e){key(e,true);});
+window.addEventListener('keyup',function(e){key(e,false);});
+
+/* ---------- boot ---------- */
+var resumed=load();
+var params=new URLSearchParams(location.search);
+var pre=parseInt(params.get('pretrain')||'0',10);
+if(pre>0){var pi=0;while(pi<pre){trainEpisode();pi++;}}
+if(resumed&&pre===0){el.save.textContent='AUTOSAVE: LOCAL - RESUMED '+archivedEp.toLocaleString('en-US')+' EP';}
+
+sizeGraph();
+window.addEventListener('resize',function(){sizeGraph();drawGraph();});
+
+var last=performance.now(),uiTick=0;
+function frame(now){
+  var dt=Math.min((now-last)/1000,0.05);last=now;
+  if(speedMode==='1')trainEpisode();
+  else if(speedMode==='25'){for(var i=0;i<25;i++)trainEpisode();}
+  else if(speedMode==='max'){
+    var t0=performance.now(),n=0;
+    while(n<300&&performance.now()-t0<8){trainEpisode();n++;}
+  }
+  exStep(dt);
+  drawMatch();
+  uiTick++;
+  if(uiTick%6===0)refreshStats();
+  drawGraph();
+  requestAnimationFrame(frame);
+}
+refreshStats();drawGraph();
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
